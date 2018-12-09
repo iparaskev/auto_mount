@@ -3,50 +3,24 @@
 #include <unistd.h>
 #include <string.h>
 #include <sys/wait.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include "constants.h"
 
-#define MONITOR (char* const[]){"udevadm",\
-	                        "monitor",\
-	                        "--udev",\
-	                        "-s",\
-                          	"block",\
-        	                NULL}
-#define ADD "add"
-#define ADD_NUM 3
-#define STDIN 0
-#define STDOUT 1
-#define LINE_LENGTH 250
-#define PATH_LENGTH 150
-#define IN 0
-#define OUT 1
 
-void
-exit_msg(char *msg)
-{
-	perror(msg);
-	exit(EXIT_FAILURE);
-}
-
-void
-run_monitor(int fd)
-{
-	/* duplicate stdout with the read end of pipe.*/
-	if (dup2(fd, STDOUT) == -1)
-		exit_msg("dup2");
-
-	/* Close the unused fd.*/
-	if (close(fd) == -1)
-		exit_msg("close");
-
-	execvp(*MONITOR, MONITOR);
-	exit_msg("execvp");
-}
-
+/* Helper functions.*/
+void exit_msg(char *msg);
 int parse_line(char line[], int line_length, char *devpath);
 void run_udisksctl(char *devpath);
+void run_monitor(int fd);
+int become_daemon(void);
 
 int
 main(int argc, char **argv)
 {
+	become_daemon();
+
 	int fds[2];
 
 	/* Open the pipe.*/
@@ -93,7 +67,7 @@ main(int argc, char **argv)
 			cur_length = strlen(line);
 			if (cur_length == LINE_LENGTH)
 			{
-				printf("Buffer overfloat");
+				printf("Buffer overflow");
 				exit(EXIT_FAILURE);
 			}
 			line[cur_length] = c;
@@ -103,7 +77,6 @@ main(int argc, char **argv)
 				parse_code = parse_line(line,
 					        	cur_length + 1,
 						       	devpath);
-				printf("Code: %d, Devpath: %s\n", parse_code, devpath);
 
 				if (!parse_code)
 				{
@@ -116,6 +89,7 @@ main(int argc, char **argv)
 					else
 						if (wait(NULL) == -1)
 							exit_msg("wait");
+
 					/* Clear the path.*/
 					memset(devpath, 0, PATH_LENGTH);
 				}
@@ -159,38 +133,37 @@ parse_line(char line[], int line_length, char *devpath)
 			case ' ':
 			case '\t':
 			case '\n':
-				if (state == IN)
-				{
-					state = OUT;
-					words++;
+			   if (state == IN)
+			   {
+				   state = OUT;
+			   	   words++;
 
-					/* Check if the third word is add.*/
-					if ((words == ADD_NUM) &&\
-					    (!strcmp(word, ADD)))
-						exit_status = 0;
-					else if (words == ADD_NUM)
-						return exit_status;
-				}
-				break;
+			   	   /* Check if the third word is add.*/
+			   	   if ((words == ADD_NUM) && (!strcmp(word, ADD)))
+			   	   	exit_status = 0;
+			   	   else if (words == ADD_NUM)
+			   	   	return exit_status;
+			   }
+			   break;
 			default:
-				if (state == OUT)
-				{
-					/* Init state and word.*/
-					state = IN;
-					memset(word, 0, PATH_LENGTH);
-				}
+			   if (state == OUT)
+			   {
+				   /* Init state and word.*/
+				   state = IN;
+				   memset(word, 0, PATH_LENGTH);
+			   }
 
-				word_length = strlen(word);
-				word[word_length] = line[i];
-				
-				if (!exit_status && words == ADD_NUM)
-				{
-					if (line[i] == '/')
-						last_slash = word_length;
+			   word_length = strlen(word);
+			   word[word_length] = line[i];
+			   
+			   if (!exit_status && words == ADD_NUM)
+			   {
+				   if (line[i] == '/')
+					   last_slash = word_length;
 
-					/* Append text to devpath.*/
-					devpath[word_length] = line[i];
-				}
+				   /* Append text to devpath.*/
+				   devpath[word_length] = line[i];
+			   }
 		}
 	}
 
@@ -231,4 +204,78 @@ run_udisksctl(char *devpath)
 	/* Execute command.*/
 	execvp(*cmd, cmd);
 	exit_msg("execvp");
+}
+
+/* Run the command udevadm monitor --udev -s block. To monitor the udev behaviour
+ * for the block module.
+ *
+ * Arguments:
+ * fd -- write end of a pipe.
+ */
+void
+run_monitor(int fd)
+{
+	/* duplicate stdout with the read end of pipe.*/
+	if (dup2(fd, STDOUT) == -1)
+		exit_msg("dup2");
+
+	/* Close the unused fd.*/
+	if (close(fd) == -1)
+		exit_msg("close");
+
+	execvp(*MONITOR, MONITOR);
+	exit_msg("execvp");
+}
+
+/* Make the program a deamon to run on the background.*/
+int 
+become_daemon(void)
+{
+	/* Fork to run on background.*/
+	switch (fork())
+	{
+		case -1:
+		   exit_msg("fork");
+		case 0:
+		   break;
+		default:
+		   exit(EXIT_SUCCESS);
+	}
+
+	/* Call setsid to start a new session.*/
+	if (setsid() == -1)
+		exit_msg("setsid");
+
+	/* Clear process umask.*/
+	umask(0);
+
+	/* Change current working directory to /.*/
+	if (chdir("/") == -1)
+		exit_msg("chdir");
+
+	/* Close all open file discriptors.*/
+	int maxfd = sysconf(_SC_OPEN_MAX);
+	if (maxfd == -1)
+		maxfd = MAX_FD;
+
+	for (int fd = 0; fd < MAX_FD; ++fd)
+		close(fd);
+
+	/* Reopen stdin, stdout and stderror and redirect them to /dev/null.*/
+	int fd = open("/dev/null", O_RDWR);
+	if (fd != STDIN)
+		exit_msg("open");
+	
+	dup2(fd, STDOUT);
+	dup2(fd, STDERR);
+
+	return 0;
+}
+
+/* Helper for visualization.*/
+void
+exit_msg(char *msg)
+{
+	perror(msg);
+	exit(EXIT_FAILURE);
 }
