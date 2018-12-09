@@ -67,7 +67,7 @@ main(int argc, char **argv)
 			cur_length = strlen(line);
 			if (cur_length == LINE_LENGTH)
 			{
-				printf("Buffer overflow");
+				syslog(LOG_ERR, "Buffer overflow");
 				exit(EXIT_FAILURE);
 			}
 			line[cur_length] = c;
@@ -169,6 +169,11 @@ parse_line(char line[], int line_length, char *devpath)
 			   }
 
 			   word_length = strlen(word);
+			   if (word_length > PATH_LENGTH)
+			   {
+				   syslog(LOG_ERR, "Buffer overflow");
+				   exit(EXIT_FAILURE);
+			   }
 			   word[word_length] = line[i];
 			   
 			   if (!exit_status && words == ADD_NUM)
