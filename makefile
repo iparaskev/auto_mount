@@ -6,6 +6,7 @@ RM = rm -f
 MKDIR = mkdir -p
 CFLAGS = -I
 DIRS = bin
+DEPS = constants.h
 RUN = auto_mount
 
 # DIRECTORIES
@@ -21,8 +22,8 @@ all: $(DIRS) $(RUN)
 $(DIRS):
 	$(MKDIR) $@
 
-auto_mount: $(SRC)/auto_mount.c
-	$(CC) -o $(BIN)/$@ $^
+auto_mount: $(SRC)/auto_mount.c $(HEADERS)/$(DEPS)
+	$(CC) -o $(BIN)/$@ $< $(CFLAGS) $(HEADERS)
 
 clean_all:
 	$(RM) $(BIN)/*
