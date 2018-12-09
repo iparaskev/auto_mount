@@ -6,6 +6,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <syslog.h>
 #include "constants.h"
 
 
@@ -59,10 +60,9 @@ main(int argc, char **argv)
 
 		int c, parse_code;
 		int cur_length;
+		int wstatus;
 		while ((c = getchar()) != EOF)
 		{
-			printf("%c", c);
-
 			/* Append a character to the line buffer.*/
 			cur_length = strlen(line);
 			if (cur_length == LINE_LENGTH)
@@ -87,8 +87,16 @@ main(int argc, char **argv)
 					else if (!tmp_pid)
 						run_udisksctl(devpath);
 					else
-						if (wait(NULL) == -1)
+					{
+						
+						if (wait(&wstatus) == -1)
 							exit_msg("wait");
+
+						if (!wstatus)
+							syslog(LOG_INFO,
+							       "Device %s mounted\n",
+							       devpath);
+					}
 
 					/* Clear the path.*/
 					memset(devpath, 0, PATH_LENGTH);
@@ -100,6 +108,13 @@ main(int argc, char **argv)
 		}
 	}
 	
+	/* Get error code of child*/
+	int wstatus;
+	if (wait(&wstatus) == -1)
+		exit_msg("wait");
+
+	syslog(LOG_ERR, "udevadm return with non zero value %d", wstatus);
+
 	return 0;
 }
 
@@ -276,6 +291,6 @@ become_daemon(void)
 void
 exit_msg(char *msg)
 {
-	perror(msg);
+	syslog(LOG_ERR, "%s %m", msg);
 	exit(EXIT_FAILURE);
 }
