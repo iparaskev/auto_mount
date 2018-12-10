@@ -16,6 +16,7 @@ int parse_line(char line[], int line_length, char *devpath);
 void run_udisksctl(char *devpath);
 void run_monitor(int fd);
 int become_daemon(void);
+void interpret(int status, char *devpath);
 
 int
 main(int argc, char **argv)
@@ -88,14 +89,11 @@ main(int argc, char **argv)
 						run_udisksctl(devpath);
 					else
 					{
-						
 						if (wait(&wstatus) == -1)
 							exit_msg("wait");
 
-						if (!wstatus)
-							syslog(LOG_INFO,
-							       "Device %s mounted\n",
-							       devpath);
+						/* Log udisksctl result.*/
+						interpret(wstatus, devpath);
 					}
 
 					/* Clear the path.*/
@@ -298,4 +296,18 @@ exit_msg(char *msg)
 {
 	syslog(LOG_ERR, "%s %m", msg);
 	exit(EXIT_FAILURE);
+}
+
+/* Interpret wait status code*/
+void
+interpret(int status, char *devpath)
+{
+	if (WIFEXITED(status))
+	{
+		int code = WEXITSTATUS(status);
+		if (!code)
+			syslog(LOG_INFO, "Device %s mounted", devpath);
+		else
+			syslog(LOG_ERR, "udiskctl exited with %d", code);
+	}
 }
