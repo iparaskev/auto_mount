@@ -12,7 +12,7 @@ udisksctl mount -b device_path
 
 ## Create a systemd unit
 For starting the program at startup and stoping any time you can create a simple systemd service.
-### tep 1: compile 
+### Step 1: compile 
 Inside the project's folder run 
 ```bash
 make
@@ -46,7 +46,7 @@ RemainAfterExit=no
 WantedBy=multi-user.target
 ```
 
-#### Step 4: enable the service
+### Step 4: enable the service
 You can enable the service with 
 ```bash
 sudo systemctl enable auto_mount@$USER
